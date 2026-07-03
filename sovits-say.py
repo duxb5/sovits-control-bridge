@@ -1,7 +1,8 @@
 import argparse
 import sys
 import time
-import winsound
+import wave
+import pyaudio
 from pathlib import Path
 from urllib import error, parse, request
 
@@ -17,24 +18,26 @@ OUTPUT_DIR = ROOT / "sovits-output"
 DEFAULT_API_URL = "http://127.0.0.1:9880/tts"
 DEFAULT_REF_AUDIO = (
     ROOT
-    / "Open-LLM-VTuber"
+    / "GPT-SoVITS"
     / "models"
     / "GPT-SoVITS_Model_Collection"
-    / "原神"
-    / "韩语"
-    / "芙宁娜_KO"
-    / "v4"
-    / "furina_ko"
+    / "your-model"
     / "ref_audio.wav"
 )
 DEFAULT_PROMPT_TEXT = "방금 이야기를 하면서 느꼈지…. 이 왕생당의 객경이란 자는… 절대 평범한 사람이 아니야"
 
 
+def resolve_local_path(value):
+    path = Path(value).expanduser()
+    return path if path.is_absolute() else ROOT / path
+
+
 def synthesize(text, args):
+    ref_audio_path = resolve_local_path(args.ref_audio_path)
     params = {
         "text": text,
         "text_lang": args.text_lang,
-        "ref_audio_path": str(Path(args.ref_audio_path)),
+        "ref_audio_path": str(ref_audio_path),
         "prompt_lang": args.prompt_lang,
         "prompt_text": args.prompt_text,
         "text_split_method": args.text_split_method,
@@ -62,9 +65,33 @@ def synthesize(text, args):
     return out_path
 
 
+def play_wav_pyaudio(path):
+    wf = wave.open(str(path), "rb")
+    p = pyaudio.PyAudio()
+    try:
+        stream = p.open(
+            format=p.get_format_from_width(wf.getsampwidth()),
+            channels=wf.getnchannels(),
+            rate=wf.getframerate(),
+            output=True,
+        )
+        try:
+            chunk_size = 1024
+            data = wf.readframes(chunk_size)
+            while data:
+                stream.write(data)
+                data = wf.readframes(chunk_size)
+        finally:
+            stream.stop_stream()
+            stream.close()
+    finally:
+        p.terminate()
+        wf.close()
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Speak text directly through the local GPT-SoVITS API without Open-LLM-VTuber."
+        description="Speak text directly through the local GPT-SoVITS API."
     )
     parser.add_argument("text", nargs="*", help="Text to synthesize. If omitted, stdin is used.")
     parser.add_argument("--api-url", default=DEFAULT_API_URL)
@@ -83,14 +110,14 @@ def main():
     if not text:
         raise SystemExit("읽을 텍스트가 없습니다.")
 
-    if not Path(args.ref_audio_path).exists():
+    if not resolve_local_path(args.ref_audio_path).exists():
         raise SystemExit(f"ref audio 파일을 찾지 못했습니다: {args.ref_audio_path}")
 
     out_path = synthesize(text, args)
     print(f"[sovits-say] generated: {out_path}")
 
     if not args.no_play:
-        winsound.PlaySound(str(out_path), winsound.SND_FILENAME)
+        play_wav_pyaudio(out_path)
         print("[sovits-say] playback complete")
 
 

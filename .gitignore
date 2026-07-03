@@ -10,8 +10,8 @@ __pycache__/
 *.mp3
 *.pid
 sovits-control.config.json
-finance-vtuber-bridge.config.json
-finance-vtuber-bridge.state.json
+finance-vtuber-bridge*
+start-finance-vtuber-bridge.ps1
 saveticker-*.json
 saveticker-*.txt
 WINDOWS_VTUBER_STACK_NOTES.md

@@ -27,11 +27,9 @@ LOG_DIR = ROOT / "logs"
 GPT_SOVITS_API_PORT = 9880
 DEFAULT_MODEL_COLLECTION_ROOT = (
     ROOT
-    / "Open-LLM-VTuber"
+    / "GPT-SoVITS"
     / "models"
     / "GPT-SoVITS_Model_Collection"
-    / "原神"
-    / "韩语"
 )
 KNOWN_PROMPTS = {
     "furina_ko": "방금 이야기를 하면서 느꼈지…. 이 왕생당의 객경이란 자는… 절대 평범한 사람이 아니야",
@@ -39,7 +37,7 @@ KNOWN_PROMPTS = {
 
 
 def find_default_ref_audio():
-    model_root = ROOT / "Open-LLM-VTuber" / "models" / "GPT-SoVITS_Model_Collection"
+    model_root = DEFAULT_MODEL_COLLECTION_ROOT
     preferred = list(model_root.glob("**/furina_ko/ref_audio.wav"))
     if preferred:
         return preferred[0]
