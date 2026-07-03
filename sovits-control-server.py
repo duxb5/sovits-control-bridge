@@ -1,6 +1,7 @@
 import json
 import hashlib
 import mimetypes
+import os
 import socket
 import subprocess
 import sys
@@ -95,6 +96,20 @@ def profile_id_from_path(path):
 def resolve_local_path(value):
     path = Path(value).expanduser()
     return path if path.is_absolute() else ROOT / path
+
+
+def path_for_gptsovits_api(path):
+    resolved = str(Path(path).resolve())
+    if os.name != "nt":
+        return resolved
+
+    drive, tail = os.path.splitdrive(resolved)
+    if not drive:
+        return resolved.replace("\\", "/")
+
+    drive_letter = drive.rstrip(":").lower()
+    tail = tail.replace("\\", "/")
+    return f"/mnt/{drive_letter}{tail}"
 
 
 def model_collection_root(config=None):
@@ -357,6 +372,19 @@ Content-Type: application/json
     </section>
 
     <section>
+      <h2>에이전트 음성 미러링</h2>
+      <div class="actions">
+        <button class="good" onclick="agentTest()">미러링 테스트</button>
+      </div>
+      <pre>POST http://127.0.0.1:18088/api/agent/speak
+Content-Type: application/json
+
+{"text":"에이전트가 화면에 표시한 답변 그대로","play":true}
+
+.\sovits-agent-send.ps1 "에이전트가 화면에 표시한 답변 그대로"</pre>
+    </section>
+
+    <section>
       <h2>로그</h2>
       <pre id="log"></pre>
     </section>
@@ -513,6 +541,25 @@ Content-Type: application/json
       }
     }
 
+    async function agentTest() {
+      setBusy(true);
+      try {
+        log("에이전트 음성 미러링을 보냈습니다.");
+        const data = await api("/api/agent/speak", {
+          method: "POST",
+          body: JSON.stringify({ text: "에이전트가 화면에 표시한 메시지를 그대로 음성 미러링하는 테스트입니다.", play: true })
+        });
+        document.getElementById("lastFile").textContent = `최근 음성: ${data.created_at || "생성됨"}`;
+        document.getElementById("audio").src = data.audio_url + `?t=${Date.now()}`;
+        log("에이전트 음성 미러링이 완료됐습니다.");
+        refreshStatus();
+      } catch (err) {
+        log("오류: " + err.message);
+      } finally {
+        setBusy(false);
+      }
+    }
+
     document.getElementById("voice_profile").addEventListener("change", writeProfileInfo);
     Promise.all([loadConfig(), loadProfiles(), refreshStatus()]).catch(err => log("초기화 오류: " + err.message));
   </script>
@@ -612,9 +659,9 @@ def apply_voice_profile(profile_id):
 
     config = load_config()
     api_url = config["api_url"]
-    call_gptsovits_api(api_url, "set_gpt_weights", {"weights_path": profile["gpt_weight_path"]})
-    call_gptsovits_api(api_url, "set_sovits_weights", {"weights_path": profile["sovits_weight_path"]})
-    call_gptsovits_api(api_url, "set_refer_audio", {"refer_audio_path": profile["ref_audio_path"]})
+    call_gptsovits_api(api_url, "set_gpt_weights", {"weights_path": path_for_gptsovits_api(profile["gpt_weight_path"])})
+    call_gptsovits_api(api_url, "set_sovits_weights", {"weights_path": path_for_gptsovits_api(profile["sovits_weight_path"])})
+    call_gptsovits_api(api_url, "set_refer_audio", {"refer_audio_path": path_for_gptsovits_api(profile["ref_audio_path"])})
 
     config.update(
         {
@@ -659,7 +706,7 @@ def synthesize(text, config):
     params = {
         "text": text,
         "text_lang": config["text_lang"],
-        "ref_audio_path": str(ref_audio_path),
+        "ref_audio_path": path_for_gptsovits_api(ref_audio_path),
         "prompt_lang": config["prompt_lang"],
         "prompt_text": config["prompt_text"],
         "text_split_method": config["text_split_method"],
@@ -841,7 +888,7 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 return self.send_json({"ok": True, "message": "GPT-SoVITS API 시작을 요청했습니다."})
 
-            if parsed.path == "/api/speak":
+            if parsed.path in ["/api/speak", "/api/agent/speak"]:
                 payload = self.read_json()
                 text = str(payload.get("text") or "").strip()
                 if not text:
