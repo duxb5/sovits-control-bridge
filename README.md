@@ -14,6 +14,7 @@ It does not watch your clipboard. It only speaks text you type into the UI or se
 - GPT-SoVITS `/tts` integration
 - PyAudio playback queue so responses are spoken in order
 - Voice profile switching for GPT weight, SoVITS weight, reference audio, and prompt text
+- Optional English token preprocessing for Korean voice profiles
 - Configurable WAV retention so old generated audio is cleaned up automatically
 - UTF-8 PowerShell helpers for Korean and CJK paths/prompts
 
@@ -164,6 +165,19 @@ Or use the helper:
 ```
 
 The web UI also includes an `Agent voice mirroring` test section so the endpoint can be checked without another app.
+
+## English Token Preprocessing
+
+Korean voice profiles can sound awkward when they read English product names, acronyms, and technical terms directly. When `normalize_english_tokens` is enabled, the bridge keeps the original visible text for previews but sends a more speakable version to GPT-SoVITS.
+
+Examples:
+
+- `API` -> `에이피아이`
+- `WSL` -> `더블유 에스 엘`
+- `PowerShell` -> `파워셸`
+- `GPT-SoVITS` -> `지피티 소비츠`
+
+This option is enabled by default and can be changed in the web UI or in `sovits-control.config.json`.
 
 ## Voice Profiles
 

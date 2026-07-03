@@ -2,6 +2,7 @@ import json
 import hashlib
 import mimetypes
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -58,6 +59,7 @@ DEFAULT_CONFIG = {
     "batch_size": 1,
     "timeout": 180,
     "auto_play": True,
+    "normalize_english_tokens": True,
     "max_chars": 3500,
     "max_saved_wavs": 50,
     "model_collection_root": str(DEFAULT_MODEL_COLLECTION_ROOT),
@@ -71,6 +73,7 @@ LAST_RESULT = {
     "file": "",
     "audio_url": "",
     "text_preview": "",
+    "spoken_text_preview": "",
     "created_at": "",
 }
 PLAYBACK_QUEUE = Queue()
@@ -110,6 +113,87 @@ def path_for_gptsovits_api(path):
     drive_letter = drive.rstrip(":").lower()
     tail = tail.replace("\\", "/")
     return f"/mnt/{drive_letter}{tail}"
+
+
+ENGLISH_TOKEN_REPLACEMENTS = [
+    ("GPT-SoVITS", "지피티 소비츠"),
+    ("GPTSoVITS", "지피티 소비츠"),
+    ("SoVITS", "소비츠"),
+    ("PowerShell", "파워셸"),
+    ("JavaScript", "자바스크립트"),
+    ("TypeScript", "타입스크립트"),
+    ("Node.js", "노드 제이에스"),
+    ("GitHub", "깃허브"),
+    ("Windows", "윈도우"),
+    ("Linux", "리눅스"),
+    ("Python", "파이썬"),
+    ("PyAudio", "파이오디오"),
+    ("PyTorch", "파이토치"),
+    ("CUDA", "쿠다"),
+    ("Miniforge", "미니포지"),
+    ("Conda", "콘다"),
+    ("WSL2", "더블유 에스 엘 투"),
+    ("WSL", "더블유 에스 엘"),
+    ("UTF-8", "유티에프 에잇"),
+    ("API", "에이피아이"),
+    ("HTTP", "에이치 티 티 피"),
+    ("JSON", "제이슨"),
+    ("URL", "유알엘"),
+    ("TTS", "티티에스"),
+    ("UI", "유아이"),
+    ("CLI", "씨엘아이"),
+    ("PR", "피알"),
+    ("PID", "피아이디"),
+    ("WAV", "웨이브"),
+    ("GPU", "지피유"),
+    ("CPU", "씨피유"),
+    ("RTX", "알티엑스"),
+    ("README", "리드미"),
+]
+
+LETTER_NAMES = {
+    "A": "에이",
+    "B": "비",
+    "C": "씨",
+    "D": "디",
+    "E": "이",
+    "F": "에프",
+    "G": "지",
+    "H": "에이치",
+    "I": "아이",
+    "J": "제이",
+    "K": "케이",
+    "L": "엘",
+    "M": "엠",
+    "N": "엔",
+    "O": "오",
+    "P": "피",
+    "Q": "큐",
+    "R": "알",
+    "S": "에스",
+    "T": "티",
+    "U": "유",
+    "V": "브이",
+    "W": "더블유",
+    "X": "엑스",
+    "Y": "와이",
+    "Z": "지",
+}
+
+
+def normalize_english_tokens_for_korean_tts(text):
+    normalized = text
+    for source, replacement in ENGLISH_TOKEN_REPLACEMENTS:
+        pattern = re.compile(rf"(?<![A-Za-z]){re.escape(source)}(?![A-Za-z])", re.IGNORECASE)
+        normalized = pattern.sub(replacement, normalized)
+
+    def spell_acronym(match):
+        token = match.group(0)
+        return " ".join(LETTER_NAMES.get(ch, ch) for ch in token)
+
+    normalized = re.sub(r"(?<![A-Za-z])v(\d+)(?![A-Za-z])", r"브이 \1", normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r"(?<![A-Za-z])([A-Z]{2,6})(?![A-Za-z])", spell_acronym, normalized)
+    return normalized
 
 
 def model_collection_root(config=None):
@@ -357,6 +441,12 @@ HTML = r"""<!doctype html>
         <option value="false">자동 재생 안 함</option>
       </select>
 
+      <label for="normalize_english_tokens">English token preprocessing</label>
+      <select id="normalize_english_tokens">
+        <option value="true">Normalize tech terms and acronyms</option>
+        <option value="false">Send text unchanged</option>
+      </select>
+
       <div class="actions">
         <button onclick="saveConfig()">설정 저장</button>
         <button class="secondary" onclick="loadConfig()">다시 불러오기</button>
@@ -391,7 +481,7 @@ Content-Type: application/json
   </main>
 
   <script>
-    const fields = ["api_url","model_collection_root","ref_audio_path","prompt_text","text_lang","prompt_lang","text_split_method","batch_size","timeout","auto_play","max_chars","max_saved_wavs"];
+    const fields = ["api_url","model_collection_root","ref_audio_path","prompt_text","text_lang","prompt_lang","text_split_method","batch_size","timeout","auto_play","normalize_english_tokens","max_chars","max_saved_wavs"];
     let voiceProfiles = [];
 
     function log(msg) {
@@ -411,7 +501,7 @@ Content-Type: application/json
       for (const id of fields) {
         const el = document.getElementById(id);
         if (id === "batch_size" || id === "timeout" || id === "max_chars" || id === "max_saved_wavs") cfg[id] = Number(el.value);
-        else if (id === "auto_play") cfg[id] = el.value === "true";
+        else if (id === "auto_play" || id === "normalize_english_tokens") cfg[id] = el.value === "true";
         else cfg[id] = el.value;
       }
       return cfg;
@@ -590,6 +680,7 @@ def save_config(config):
         merged["timeout"] = max(10, int(merged.get("timeout") or 180))
         merged["max_chars"] = max(100, int(merged.get("max_chars") or 3500))
         merged["max_saved_wavs"] = max(1, int(merged.get("max_saved_wavs") or 50))
+        merged["normalize_english_tokens"] = bool(merged.get("normalize_english_tokens", True))
         with CONFIG_PATH.open("w", encoding="utf-8") as f:
             json.dump(merged, f, ensure_ascii=False, indent=2)
             f.write("\n")
@@ -698,13 +789,15 @@ def synthesize(text, config):
     max_chars = int(config.get("max_chars") or 3500)
     if len(text) > max_chars:
         text = text[:max_chars].rstrip()
+    original_text = text
+    spoken_text = normalize_english_tokens_for_korean_tts(text) if config.get("normalize_english_tokens", True) else text
 
     ref_audio_path = resolve_local_path(config["ref_audio_path"])
     if not ref_audio_path.exists():
         raise RuntimeError(f"reference audio 파일을 찾지 못했습니다: {ref_audio_path}")
 
     params = {
-        "text": text,
+        "text": spoken_text,
         "text_lang": config["text_lang"],
         "ref_audio_path": path_for_gptsovits_api(ref_audio_path),
         "prompt_lang": config["prompt_lang"],
@@ -728,7 +821,7 @@ def synthesize(text, config):
     OUTPUT_DIR.mkdir(exist_ok=True)
     out_path = OUTPUT_DIR / f"sovits-control-{time.time_ns()}.wav"
     out_path.write_bytes(data)
-    return out_path, text
+    return out_path, original_text, spoken_text
 
 
 def play_async(path):
@@ -894,7 +987,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not text:
                     return self.send_json({"ok": False, "error": "읽을 텍스트가 없습니다."}, 400)
                 config = save_config(payload.get("config") or load_config())
-                path, spoken_text = synthesize(text, config)
+                path, original_text, spoken_text = synthesize(text, config)
                 should_play = bool(payload.get("play", config.get("auto_play", True)))
                 if should_play:
                     play_async(path)
@@ -907,7 +1000,8 @@ class Handler(BaseHTTPRequestHandler):
                     {
                         "file": str(path),
                         "audio_url": "/audio/" + parse.quote(path.name),
-                        "text_preview": spoken_text[:160],
+                        "text_preview": original_text[:160],
+                        "spoken_text_preview": spoken_text[:160],
                         "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
                     }
                 )
