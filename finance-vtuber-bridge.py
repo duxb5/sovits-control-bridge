@@ -4,7 +4,16 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from urllib import error, parse, request
+from urllib import parse
+import requests
+
+
+SESSION = requests.Session()
+SESSION.headers.update({
+    "Accept": "application/json",
+    "Referer": "https://saveticker.com/news",
+    "User-Agent": "Mozilla/5.0",
+})
 
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -56,30 +65,26 @@ def save_json(path, data):
 
 
 def http_json(method, url, payload=None, timeout=30):
-    body = None
-    headers = {
-        "Accept": "application/json",
-        "Referer": "https://saveticker.com/news",
-        "User-Agent": "Mozilla/5.0",
-    }
-    if payload is not None:
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        headers["Content-Type"] = "application/json; charset=utf-8"
-    req = request.Request(url, data=body, method=method, headers=headers)
     try:
-        with request.urlopen(req, timeout=timeout) as res:
-            raw = res.read().decode("utf-8")
-            return json.loads(raw) if raw else {}
-    except error.HTTPError as exc:
-        raw = exc.read().decode("utf-8", errors="replace")
+        if payload is not None:
+            res = SESSION.request(method, url, json=payload, timeout=timeout)
+        else:
+            res = SESSION.request(method, url, timeout=timeout)
+
+        if res.status_code >= 400:
+            try:
+                details = res.json()
+            except Exception:
+                details = {"error": res.text}
+            details["status"] = res.status_code
+            raise RuntimeError(json.dumps(details, ensure_ascii=False))
+
         try:
-            details = json.loads(raw)
+            return res.json()
         except Exception:
-            details = {"error": raw or exc.reason}
-        details["status"] = exc.code
-        raise RuntimeError(json.dumps(details, ensure_ascii=False))
-    except error.URLError as exc:
-        raise RuntimeError(str(exc.reason))
+            return {}
+    except requests.exceptions.RequestException as exc:
+        raise RuntimeError(str(exc))
 
 
 def api_url(base, path, query=None):
@@ -167,6 +172,7 @@ def is_today_kst(item):
     published = item.get("created_at") or (item.get("extra") or {}).get("source_created_at")
     parsed = parse_datetime(published)
     if parsed is None:
+        print(f"[bridge] [WARNING] Failed to parse date: {published}", file=sys.stderr)
         return False
     return parsed.astimezone(kst).date() == datetime.now(kst).date()
 
