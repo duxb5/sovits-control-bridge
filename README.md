@@ -166,14 +166,19 @@ Or use the helper:
 
 The web UI also includes an `Agent voice mirroring` test section so the endpoint can be checked without another app.
 
-## Mirroring Mode
+## Mirroring Mode & Scope
 
-You can configure how the caller handles voice mirroring in the web UI or via `sovits-control.config.json` using the `mirroring_mode` setting:
+You can configure how the caller handles voice mirroring in the web UI or via `sovits-control.config.json` using the following settings:
 
+### Mirroring Mode (`mirroring_mode`)
 *   **`full`**: Speaks the entire text of the agent's response word-for-word (excluding code blocks and raw markdown symbols).
 *   **`summary`**: Directs the calling agent (via global `AGENTS.md` instructions) to dynamically summarize its final response into a concise 2-4 sentence overview for speech playback.
 
-Developer agents (such as Codex and Antigravity) read this configuration dynamically at runtime and adapt their output generation based on your shared `AGENTS.md` rules.
+### Mirroring Scope (`mirroring_scope`)
+*   **`final_only`**: Only speaks the final response at the very end of the agent's turn.
+*   **`all`**: Directs the agent to also speak a brief (1-sentence) progress update before executing intermediate steps or calling tools (e.g. starting searches, editing files).
+
+Developer agents (such as Codex and Antigravity) read these configurations dynamically at runtime and adapt their output generation based on your shared `AGENTS.md` rules.
 
 ## English Token Preprocessing
 
