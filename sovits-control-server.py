@@ -6,7 +6,9 @@ import subprocess
 import sys
 import threading
 import time
-import winsound
+import traceback
+import wave
+import pyaudio
 from queue import Queue
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -635,16 +637,41 @@ def play_async(path):
     PLAYBACK_STATE["queued"] = PLAYBACK_QUEUE.qsize()
 
 
+def play_wav_pyaudio(path):
+    wf = wave.open(str(path), 'rb')
+    p = pyaudio.PyAudio()
+    try:
+        stream = p.open(
+            format=p.get_format_from_width(wf.getsampwidth()),
+            channels=wf.getnchannels(),
+            rate=wf.getframerate(),
+            output=True
+        )
+        try:
+            chunk_size = 1024
+            data = wf.readframes(chunk_size)
+            while len(data) > 0:
+                stream.write(data)
+                data = wf.readframes(chunk_size)
+        finally:
+            stream.stop_stream()
+            stream.close()
+    finally:
+        p.terminate()
+        wf.close()
+
+
 def playback_worker():
     while True:
         path = PLAYBACK_QUEUE.get()
         PLAYBACK_STATE["queued"] = PLAYBACK_QUEUE.qsize()
         PLAYBACK_STATE["current"] = str(path)
         try:
-            winsound.PlaySound(str(path), winsound.SND_FILENAME)
+            play_wav_pyaudio(path)
             PLAYBACK_STATE["last_played"] = str(path)
         except Exception as exc:
             print(f"[sovits-control] playback failed: {exc}", file=sys.stderr)
+            traceback.print_exc()
         finally:
             PLAYBACK_STATE["current"] = ""
             PLAYBACK_STATE["queued"] = PLAYBACK_QUEUE.qsize()
@@ -784,6 +811,7 @@ class Handler(BaseHTTPRequestHandler):
 
             return self.send_json({"ok": False, "error": "not found"}, 404)
         except Exception as exc:
+            traceback.print_exc()
             return self.send_json({"ok": False, "error": str(exc)}, 500)
 
 
