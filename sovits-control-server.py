@@ -66,6 +66,7 @@ DEFAULT_CONFIG = {
     "voice_profile_id": "",
     "gpt_weight_path": "",
     "sovits_weight_path": "",
+    "mirroring_mode": "full",
 }
 
 
@@ -447,6 +448,12 @@ HTML = r"""<!doctype html>
         <option value="false">Send text unchanged</option>
       </select>
 
+      <label for="mirroring_mode">에이전트 음성 미러링 모드 (Agent voice mirroring mode)</label>
+      <select id="mirroring_mode">
+        <option value="full">전체 답변 읽기 (Full response)</option>
+        <option value="summary">요약해서 읽기 (Concise summary)</option>
+      </select>
+
       <div class="actions">
         <button onclick="saveConfig()">설정 저장</button>
         <button class="secondary" onclick="loadConfig()">다시 불러오기</button>
@@ -481,7 +488,7 @@ Content-Type: application/json
   </main>
 
   <script>
-    const fields = ["api_url","model_collection_root","ref_audio_path","prompt_text","text_lang","prompt_lang","text_split_method","batch_size","timeout","auto_play","normalize_english_tokens","max_chars","max_saved_wavs"];
+    const fields = ["api_url","model_collection_root","ref_audio_path","prompt_text","text_lang","prompt_lang","text_split_method","batch_size","timeout","auto_play","normalize_english_tokens","max_chars","max_saved_wavs","mirroring_mode"];
     let voiceProfiles = [];
 
     function log(msg) {

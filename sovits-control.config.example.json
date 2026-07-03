@@ -14,5 +14,6 @@
   "max_saved_wavs": 50,
   "voice_profile_id": "",
   "gpt_weight_path": "",
-  "sovits_weight_path": ""
+  "sovits_weight_path": "",
+  "mirroring_mode": "full"
 }

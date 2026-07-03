@@ -166,6 +166,15 @@ Or use the helper:
 
 The web UI also includes an `Agent voice mirroring` test section so the endpoint can be checked without another app.
 
+## Mirroring Mode
+
+You can configure how the caller handles voice mirroring in the web UI or via `sovits-control.config.json` using the `mirroring_mode` setting:
+
+*   **`full`**: Speaks the entire text of the agent's response word-for-word (excluding code blocks and raw markdown symbols).
+*   **`summary`**: Directs the calling agent (via global `AGENTS.md` instructions) to dynamically summarize its final response into a concise 2-4 sentence overview for speech playback.
+
+Developer agents (such as Codex and Antigravity) read this configuration dynamically at runtime and adapt their output generation based on your shared `AGENTS.md` rules.
+
 ## English Token Preprocessing
 
 Korean voice profiles can sound awkward when they read English product names, acronyms, and technical terms directly. When `normalize_english_tokens` is enabled, the bridge keeps the original visible text for previews but sends a more speakable version to GPT-SoVITS.
