@@ -504,26 +504,31 @@ Content-Type: application/json
 """
 
 
+CONFIG_LOCK = threading.Lock()
+
+
 def load_config():
-    if not CONFIG_PATH.exists():
-        return dict(DEFAULT_CONFIG)
-    try:
-        with CONFIG_PATH.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-        return {**DEFAULT_CONFIG, **data}
-    except Exception:
-        return dict(DEFAULT_CONFIG)
+    with CONFIG_LOCK:
+        if not CONFIG_PATH.exists():
+            return dict(DEFAULT_CONFIG)
+        try:
+            with CONFIG_PATH.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+            return {**DEFAULT_CONFIG, **data}
+        except Exception:
+            return dict(DEFAULT_CONFIG)
 
 
 def save_config(config):
-    merged = {**DEFAULT_CONFIG, **(config or {})}
-    merged["batch_size"] = max(1, int(merged.get("batch_size") or 1))
-    merged["timeout"] = max(10, int(merged.get("timeout") or 180))
-    merged["max_chars"] = max(100, int(merged.get("max_chars") or 3500))
-    with CONFIG_PATH.open("w", encoding="utf-8") as f:
-        json.dump(merged, f, ensure_ascii=False, indent=2)
-        f.write("\n")
-    return merged
+    with CONFIG_LOCK:
+        merged = {**DEFAULT_CONFIG, **(config or {})}
+        merged["batch_size"] = max(1, int(merged.get("batch_size") or 1))
+        merged["timeout"] = max(10, int(merged.get("timeout") or 180))
+        merged["max_chars"] = max(100, int(merged.get("max_chars") or 3500))
+        with CONFIG_PATH.open("w", encoding="utf-8") as f:
+            json.dump(merged, f, ensure_ascii=False, indent=2)
+            f.write("\n")
+        return merged
 
 
 def is_port_open(host="127.0.0.1", port=GPT_SOVITS_API_PORT, timeout=1.0):
