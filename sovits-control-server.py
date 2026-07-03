@@ -58,6 +58,7 @@ DEFAULT_CONFIG = {
     "timeout": 180,
     "auto_play": True,
     "max_chars": 3500,
+    "max_saved_wavs": 50,
     "model_collection_root": str(DEFAULT_MODEL_COLLECTION_ROOT),
     "voice_profile_id": "",
     "gpt_weight_path": "",
@@ -268,9 +269,7 @@ HTML = r"""<!doctype html>
       <h2>읽을 텍스트</h2>
       <textarea id="text" placeholder="여기에 읽을 텍스트를 넣거나, /api/speak 로 보내세요."></textarea>
       <div class="actions">
-        <button id="speakPlay" onclick="speak(true)">생성하고 PC에서 재생</button>
-        <button id="speakFile" class="secondary" onclick="speak(false)">파일만 생성</button>
-        <button class="secondary" onclick="clearText()">비우기</button>
+        <button id="speakPlay" onclick="speak(true)">소리 재생</button>
         <button class="good" onclick="startApi()">GPT-SoVITS API 켜기</button>
         <button class="secondary" onclick="refreshStatus()">상태 새로고침</button>
       </div>
@@ -331,12 +330,16 @@ HTML = r"""<!doctype html>
           <label for="max_chars">Max characters</label>
           <input id="max_chars" type="number" min="100" />
         </div>
+        <div>
+          <label for="max_saved_wavs">Saved WAV limit</label>
+          <input id="max_saved_wavs" type="number" min="1" />
+        </div>
       </div>
 
       <label for="auto_play">Default playback</label>
       <select id="auto_play">
         <option value="true">PC에서 재생</option>
-        <option value="false">파일만 생성</option>
+        <option value="false">자동 재생 안 함</option>
       </select>
 
       <div class="actions">
@@ -360,7 +363,7 @@ Content-Type: application/json
   </main>
 
   <script>
-    const fields = ["api_url","model_collection_root","ref_audio_path","prompt_text","text_lang","prompt_lang","text_split_method","batch_size","timeout","auto_play","max_chars"];
+    const fields = ["api_url","model_collection_root","ref_audio_path","prompt_text","text_lang","prompt_lang","text_split_method","batch_size","timeout","auto_play","max_chars","max_saved_wavs"];
     let voiceProfiles = [];
 
     function log(msg) {
@@ -379,7 +382,7 @@ Content-Type: application/json
       const cfg = {};
       for (const id of fields) {
         const el = document.getElementById(id);
-        if (id === "batch_size" || id === "timeout" || id === "max_chars") cfg[id] = Number(el.value);
+        if (id === "batch_size" || id === "timeout" || id === "max_chars" || id === "max_saved_wavs") cfg[id] = Number(el.value);
         else if (id === "auto_play") cfg[id] = el.value === "true";
         else cfg[id] = el.value;
       }
@@ -396,10 +399,6 @@ Content-Type: application/json
 
     function setBusy(isBusy) {
       document.querySelectorAll("button").forEach(button => button.disabled = isBusy);
-    }
-
-    function clearText() {
-      document.getElementById("text").value = "";
     }
 
     async function loadConfig() {
@@ -475,7 +474,7 @@ Content-Type: application/json
           : "GPT-SoVITS API 꺼짐";
         if (data.last && data.last.audio_url) {
           document.getElementById("audio").src = data.last.audio_url;
-          document.getElementById("lastFile").innerHTML = `최근 파일: <code>${data.last.file}</code>`;
+          document.getElementById("lastFile").textContent = `최근 음성: ${data.last.created_at || "생성됨"}`;
         }
       } catch (err) {
         document.getElementById("dot").className = "dot bad";
@@ -503,9 +502,9 @@ Content-Type: application/json
           method: "POST",
           body: JSON.stringify({ text, play, config: readForm() })
         });
-        document.getElementById("lastFile").innerHTML = `생성 파일: <code>${data.file}</code>`;
+        document.getElementById("lastFile").textContent = `최근 음성: ${data.created_at || "생성됨"}`;
         document.getElementById("audio").src = data.audio_url + `?t=${Date.now()}`;
-        log(play ? "합성 완료. PC에서 재생을 시작했습니다." : "합성 완료. 파일만 생성했습니다.");
+        log("합성 완료. PC에서 재생을 시작했습니다.");
         refreshStatus();
       } catch (err) {
         log("오류: " + err.message);
@@ -543,6 +542,7 @@ def save_config(config):
         merged["batch_size"] = max(1, int(merged.get("batch_size") or 1))
         merged["timeout"] = max(10, int(merged.get("timeout") or 180))
         merged["max_chars"] = max(100, int(merged.get("max_chars") or 3500))
+        merged["max_saved_wavs"] = max(1, int(merged.get("max_saved_wavs") or 50))
         with CONFIG_PATH.open("w", encoding="utf-8") as f:
             json.dump(merged, f, ensure_ascii=False, indent=2)
             f.write("\n")
@@ -555,6 +555,35 @@ def is_port_open(host="127.0.0.1", port=GPT_SOVITS_API_PORT, timeout=1.0):
             return True
     except OSError:
         return False
+
+
+def output_stats():
+    OUTPUT_DIR.mkdir(exist_ok=True)
+    files = [path for path in OUTPUT_DIR.glob("*.wav") if path.is_file()]
+    total_bytes = sum(path.stat().st_size for path in files)
+    return {"count": len(files), "bytes": total_bytes}
+
+
+def cleanup_output_files(max_saved, protected_paths=None):
+    OUTPUT_DIR.mkdir(exist_ok=True)
+    protected = {Path(path).resolve() for path in (protected_paths or []) if path}
+    files = sorted(
+        [path for path in OUTPUT_DIR.glob("*.wav") if path.is_file()],
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    keep = set(path.resolve() for path in files[:max_saved]) | protected
+    deleted_count = 0
+    failed_count = 0
+    for path in files:
+        if path.resolve() in keep:
+            continue
+        try:
+            path.unlink()
+            deleted_count += 1
+        except OSError:
+            failed_count += 1
+    return {"deleted_count": deleted_count, "failed_count": failed_count}
 
 
 def call_gptsovits_api(api_url, endpoint, params):
@@ -764,6 +793,7 @@ class Handler(BaseHTTPRequestHandler):
                     "gptsovits": {"running": is_port_open(), "url": config["api_url"]},
                     "last": LAST_RESULT,
                     "playback": PLAYBACK_STATE,
+                    "output": output_stats(),
                 }
             )
         if parsed.path.startswith("/audio/"):
@@ -821,6 +851,10 @@ class Handler(BaseHTTPRequestHandler):
                 should_play = bool(payload.get("play", config.get("auto_play", True)))
                 if should_play:
                     play_async(path)
+                cleanup_output_files(
+                    int(config.get("max_saved_wavs") or 50),
+                    [path, PLAYBACK_STATE.get("current"), PLAYBACK_STATE.get("last_played")],
+                )
 
                 LAST_RESULT.update(
                     {

@@ -10,6 +10,7 @@
   "timeout": 180,
   "auto_play": true,
   "max_chars": 3500,
+  "max_saved_wavs": 50,
   "voice_profile_id": "",
   "gpt_weight_path": "",
   "sovits_weight_path": ""

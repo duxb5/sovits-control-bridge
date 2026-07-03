@@ -13,6 +13,7 @@ It does not watch your clipboard. It only speaks text you type into the UI or se
 - GPT-SoVITS `/tts` integration
 - PyAudio playback queue so responses are spoken in order
 - Voice profile switching for GPT weight, SoVITS weight, reference audio, and prompt text
+- Configurable WAV retention so old generated audio is cleaned up automatically
 - UTF-8 PowerShell helpers for Korean and CJK paths/prompts
 
 ## Recommended Layout
@@ -144,6 +145,8 @@ These files are local machine state and are ignored by Git:
 - `*.pid`
 
 Use `sovits-control.config.example.json` as the starting point for a new machine.
+
+Generated WAV files are kept for browser playback and debugging. The `Saved WAV limit` setting controls how many recent files remain; older files are deleted automatically after new speech is generated.
 
 ## Security
 
