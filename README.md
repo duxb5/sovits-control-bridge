@@ -180,6 +180,36 @@ You can configure how the caller handles voice mirroring in the web UI or via `s
 
 Developer agents (such as Codex and Antigravity) read these configurations dynamically at runtime and adapt their output generation based on your shared `AGENTS.md` rules.
 
+### How to Configure Developer Agents (`AGENTS.md` Template)
+
+To enable automatic voice mirroring in your developer agent (Codex or Antigravity), append the following rule block to your global `AGENTS.md` file (typically located at `~/.gemini/config/AGENTS.md`):
+
+```markdown
+# Global Rules
+
+## Voice Mirroring
+To maintain conversational presence, you must mirror your verbal responses (both final responses and optionally intermediate actions) to the local voice bridge so that it can speak it out loud.
+
+### Mode & Scope Settings
+Before deciding what or when to speak, you MUST read the configuration file at `C:/path/to/sovits-control-bridge/sovits-control.config.json` (replace with your actual installation path) to inspect the following settings:
+- `"mirroring_mode"`: `"full"` (default) or `"summary"`.
+- `"mirroring_scope"`: `"final_only"` (default) or `"all"`.
+
+### Rules for Speaking
+1. **Final Responses (Always Mirror)**:
+   - At the very end of your turn, after all other work is complete, you must mirror your final verbal response using `run_command` as the last action of your turn:
+     `powershell -ExecutionPolicy Bypass -File C:/path/to/sovits-control-bridge/sovits-agent-send.ps1 "<text_to_speak>"` (replace with your actual installation path)
+   - If `"mirroring_mode"` is `"summary"`, generate a concise, natural verbal summary of your final response (around 2-4 sentences) and use it as `<text_to_speak>`.
+   - If `"mirroring_mode"` is `"full"` (or not found), use the exact and complete verbal text of your final response to the user.
+2. **Intermediate Actions (Scope-Dependent)**:
+   - If `"mirroring_scope"` is `"all"`, you should also run the voice bridge command to speak a brief (1-sentence) verbal description of your plan or intermediate steps (e.g., when calling tools, starting research, or running terminal commands) as they occur.
+   - If `"mirroring_scope"` is `"final_only"` (or not found), do NOT run intermediate voice commands. Only speak at the very end of your turn.
+
+### Formatting Details
+In all cases, ensure `<text_to_speak>` has all non-verbal markdown syntax (such as code blocks, brackets of links, image URLs, or alert headers) stripped out. Escape any double quotes inside the text argument.
+```
+
+
 ## English Token Preprocessing
 
 Korean voice profiles can sound awkward when they read English product names, acronyms, and technical terms directly. When `normalize_english_tokens` is enabled, the bridge keeps the original visible text for previews but sends a more speakable version to GPT-SoVITS.
