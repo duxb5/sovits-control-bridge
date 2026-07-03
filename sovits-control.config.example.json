@@ -15,5 +15,6 @@
   "voice_profile_id": "",
   "gpt_weight_path": "",
   "sovits_weight_path": "",
-  "mirroring_mode": "full"
+  "mirroring_mode": "full",
+  "mirroring_scope": "final_only"
 }

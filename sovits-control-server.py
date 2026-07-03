@@ -67,6 +67,7 @@ DEFAULT_CONFIG = {
     "gpt_weight_path": "",
     "sovits_weight_path": "",
     "mirroring_mode": "full",
+    "mirroring_scope": "final_only",
 }
 
 
@@ -454,6 +455,12 @@ HTML = r"""<!doctype html>
         <option value="summary">요약해서 읽기 (Concise summary)</option>
       </select>
 
+      <label for="mirroring_scope">에이전트 음성 미러링 범위 (Agent voice mirroring scope)</label>
+      <select id="mirroring_scope">
+        <option value="final_only">최종 답변만 읽기 (Final response only)</option>
+        <option value="all">중간 진행 과정 및 최종 답변 모두 읽기 (All progress & final)</option>
+      </select>
+
       <div class="actions">
         <button onclick="saveConfig()">설정 저장</button>
         <button class="secondary" onclick="loadConfig()">다시 불러오기</button>
@@ -488,7 +495,7 @@ Content-Type: application/json
   </main>
 
   <script>
-    const fields = ["api_url","model_collection_root","ref_audio_path","prompt_text","text_lang","prompt_lang","text_split_method","batch_size","timeout","auto_play","normalize_english_tokens","max_chars","max_saved_wavs","mirroring_mode"];
+    const fields = ["api_url","model_collection_root","ref_audio_path","prompt_text","text_lang","prompt_lang","text_split_method","batch_size","timeout","auto_play","normalize_english_tokens","max_chars","max_saved_wavs","mirroring_mode","mirroring_scope"];
     let voiceProfiles = [];
 
     function log(msg) {
