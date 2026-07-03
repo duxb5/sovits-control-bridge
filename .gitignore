@@ -9,4 +9,9 @@ __pycache__/
 *.wav
 *.mp3
 *.pid
+sovits-control.config.json
+finance-vtuber-bridge.config.json
 finance-vtuber-bridge.state.json
+saveticker-*.json
+saveticker-*.txt
+WINDOWS_VTUBER_STACK_NOTES.md

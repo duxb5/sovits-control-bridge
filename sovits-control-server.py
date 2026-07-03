@@ -25,7 +25,7 @@ CONFIG_PATH = ROOT / "sovits-control.config.json"
 OUTPUT_DIR = ROOT / "sovits-output"
 LOG_DIR = ROOT / "logs"
 GPT_SOVITS_API_PORT = 9880
-MODEL_COLLECTION_ROOT = (
+DEFAULT_MODEL_COLLECTION_ROOT = (
     ROOT
     / "Open-LLM-VTuber"
     / "models"
@@ -60,6 +60,7 @@ DEFAULT_CONFIG = {
     "timeout": 180,
     "auto_play": True,
     "max_chars": 3500,
+    "model_collection_root": str(DEFAULT_MODEL_COLLECTION_ROOT),
     "voice_profile_id": "",
     "gpt_weight_path": "",
     "sovits_weight_path": "",
@@ -92,6 +93,16 @@ def profile_id_from_path(path):
     return hashlib.sha1(rel.encode("utf-8")).hexdigest()[:12]
 
 
+def resolve_local_path(value):
+    path = Path(value).expanduser()
+    return path if path.is_absolute() else ROOT / path
+
+
+def model_collection_root(config=None):
+    value = (config or {}).get("model_collection_root") or str(DEFAULT_MODEL_COLLECTION_ROOT)
+    return resolve_local_path(value)
+
+
 def pick_reference_audio(model_dir):
     direct = model_dir / "ref_audio.wav"
     if direct.exists():
@@ -113,12 +124,13 @@ def pick_reference_audio(model_dir):
     return sorted(refs, key=score)[0]
 
 
-def discover_voice_profiles():
-    if not MODEL_COLLECTION_ROOT.exists():
+def discover_voice_profiles(config=None):
+    root = model_collection_root(config)
+    if not root.exists():
         return []
 
     profiles = []
-    for ckpt_path in sorted(MODEL_COLLECTION_ROOT.glob("**/*.ckpt"), key=lambda p: str(p)):
+    for ckpt_path in sorted(root.glob("**/*.ckpt"), key=lambda p: str(p)):
         model_dir = ckpt_path.parent
         pth_candidates = sorted(model_dir.glob("*.pth"), key=lambda p: str(p))
         ref_audio_path = pick_reference_audio(model_dir)
@@ -127,7 +139,7 @@ def discover_voice_profiles():
 
         pth_path = pth_candidates[0]
         profile_id = profile_id_from_path(model_dir)
-        rel_dir = model_dir.relative_to(MODEL_COLLECTION_ROOT)
+        rel_dir = model_dir.relative_to(root)
         model_name = model_dir.name
         prompt_text = KNOWN_PROMPTS.get(model_name.lower()) or normalize_prompt_from_audio(ref_audio_path)
         profiles.append(
@@ -149,21 +161,22 @@ def discover_voice_profiles():
 
 
 def get_profile(profile_id):
-    for profile in discover_voice_profiles():
+    config = load_config()
+    for profile in discover_voice_profiles(config):
         if profile["id"] == profile_id:
             return profile
     return None
 
 
 def infer_current_profile_id(config, profiles=None):
-    profiles = profiles or discover_voice_profiles()
+    profiles = profiles or discover_voice_profiles(config)
     configured = config.get("voice_profile_id", "")
     if configured and any(profile["id"] == configured for profile in profiles):
         return configured
 
-    ref_audio = str(Path(config.get("ref_audio_path", "")).resolve()).lower() if config.get("ref_audio_path") else ""
-    gpt_weight = str(Path(config.get("gpt_weight_path", "")).resolve()).lower() if config.get("gpt_weight_path") else ""
-    sovits_weight = str(Path(config.get("sovits_weight_path", "")).resolve()).lower() if config.get("sovits_weight_path") else ""
+    ref_audio = str(resolve_local_path(config.get("ref_audio_path", "")).resolve()).lower() if config.get("ref_audio_path") else ""
+    gpt_weight = str(resolve_local_path(config.get("gpt_weight_path", "")).resolve()).lower() if config.get("gpt_weight_path") else ""
+    sovits_weight = str(resolve_local_path(config.get("sovits_weight_path", "")).resolve()).lower() if config.get("sovits_weight_path") else ""
 
     for profile in profiles:
         if ref_audio and str(Path(profile["ref_audio_path"]).resolve()).lower() == ref_audio:
@@ -273,7 +286,7 @@ HTML = r"""<!doctype html>
       <select id="voice_profile"></select>
       <div class="actions">
         <button class="good" onclick="applyProfile()">선택한 모델 적용</button>
-        <button class="secondary" onclick="loadProfiles()">프로필 새로고침</button>
+        <button class="secondary" onclick="loadProfiles(true)">프로필 새로고침</button>
       </div>
       <p id="profileInfo" class="subtle"></p>
     </section>
@@ -282,6 +295,9 @@ HTML = r"""<!doctype html>
       <h2>음성 설정</h2>
       <label for="api_url">GPT-SoVITS API URL</label>
       <input id="api_url" />
+
+      <label for="model_collection_root">Model collection root</label>
+      <input id="model_collection_root" />
 
       <label for="ref_audio_path">Reference audio path</label>
       <input id="ref_audio_path" />
@@ -346,7 +362,7 @@ Content-Type: application/json
   </main>
 
   <script>
-    const fields = ["api_url","ref_audio_path","prompt_text","text_lang","prompt_lang","text_split_method","batch_size","timeout","auto_play","max_chars"];
+    const fields = ["api_url","model_collection_root","ref_audio_path","prompt_text","text_lang","prompt_lang","text_split_method","batch_size","timeout","auto_play","max_chars"];
     let voiceProfiles = [];
 
     function log(msg) {
@@ -425,7 +441,10 @@ Content-Type: application/json
       info.textContent = `${profile.label} · ${profile.version || "unknown"} · ${profile.prompt_text}`;
     }
 
-    async function loadProfiles() {
+    async function loadProfiles(saveCurrentForm = false) {
+      if (saveCurrentForm) {
+        await api("/api/config", { method: "POST", body: JSON.stringify(readForm()) });
+      }
       const data = await api("/api/profiles");
       writeProfiles(data.profiles, data.current_profile_id);
       log(`모델 프로필 ${data.profiles.length}개를 불러왔습니다.`);
@@ -436,6 +455,7 @@ Content-Type: application/json
       if (!profileId) return log("선택한 모델 프로필이 없습니다.");
       setBusy(true);
       try {
+        await api("/api/config", { method: "POST", body: JSON.stringify(readForm()) });
         log("모델 프로필을 적용하는 중입니다.");
         const data = await api("/api/profiles/apply", { method: "POST", body: JSON.stringify({ profile_id: profileId }) });
         writeForm(data.config);
@@ -605,7 +625,7 @@ def synthesize(text, config):
     if len(text) > max_chars:
         text = text[:max_chars].rstrip()
 
-    ref_audio_path = Path(config["ref_audio_path"])
+    ref_audio_path = resolve_local_path(config["ref_audio_path"])
     if not ref_audio_path.exists():
         raise RuntimeError(f"reference audio 파일을 찾지 못했습니다: {ref_audio_path}")
 
@@ -730,7 +750,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"ok": True, "config": load_config()})
         if parsed.path == "/api/profiles":
             config = load_config()
-            profiles = discover_voice_profiles()
+            profiles = discover_voice_profiles(config)
             return self.send_json(
                 {
                     "ok": True,
@@ -778,7 +798,7 @@ class Handler(BaseHTTPRequestHandler):
                         "ok": True,
                         "profile": profile,
                         "config": config,
-                        "profiles": discover_voice_profiles(),
+                        "profiles": discover_voice_profiles(config),
                     }
                 )
 
