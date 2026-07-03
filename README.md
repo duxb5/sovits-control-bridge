@@ -2,14 +2,15 @@
 
 Agent text to GPT-SoVITS voice.
 
-SoVITS Control Bridge is a small local HTTP bridge that sends explicit text to a local GPT-SoVITS API, saves the generated WAV file, and plays it through PyAudio. It is meant for agent answer mirroring, local assistants, and simple text-to-speech automation.
+SoVITS Control Bridge is a small local HTTP bridge that sends explicit text to a local GPT-SoVITS API, saves the generated WAV file, and plays it through PyAudio. It is meant for agent answer voice mirroring: the agent sends the same message it shows to the user, and the bridge speaks that text.
 
-It does not watch your clipboard. It only speaks text you type into the UI or send to `/api/speak`.
+It does not watch your clipboard. It only speaks text you type into the UI or send to `/api/speak` or `/api/agent/speak`.
 
 ## Features
 
 - Local web UI at `http://127.0.0.1:18088`
 - `POST /api/speak` for explicit text-to-speech requests
+- `POST /api/agent/speak` for visible agent-message voice mirroring
 - GPT-SoVITS `/tts` integration
 - PyAudio playback queue so responses are spoken in order
 - Voice profile switching for GPT weight, SoVITS weight, reference audio, and prompt text
@@ -77,6 +78,26 @@ Copy-Item .\sovits-control.config.example.json .\sovits-control.config.json
 
 PyAudio is required for bridge playback. If installation fails on Windows, install a wheel that matches your Python version or use a Python distribution with PortAudio support.
 
+## Windows + WSL GPT-SoVITS Notes
+
+On a Windows host with a recent NVIDIA GPU, it can be easier to run the bridge on Windows and run GPT-SoVITS inside WSL. This repository includes `scripts/start-gptsovits-api-wsl.sh` for that layout. The PowerShell launcher calls WSL, activates a conda environment named `GPTSoVits`, and starts `api_v2.py` on `127.0.0.1:9880`.
+
+The setup that was verified while preparing this bridge used:
+
+- Windows Python 3.12 for the bridge and PyAudio playback
+- WSL with Miniforge under `~/miniforge3`
+- conda environment `GPTSoVits` with Python 3.10
+- GPT-SoVITS installed under `sovits-control-bridge/GPT-SoVITS`
+- CUDA 12.8 PyTorch wheels: `torch==2.7.0+cu128` and `torchaudio==2.7.0+cu128`
+
+Troubleshooting tips from that install:
+
+- If GPT-SoVITS fails with `libcudart.so.13`, the installed PyTorch wheel expects CUDA 13 runtime libraries. Reinstall PyTorch/Torchaudio for the CUDA runtime available in WSL; CUDA 12.8 wheels fixed that issue on this machine.
+- If GPT-SoVITS imports fail, check optional packages such as `onnxruntime` and a compatible `markupsafe` version.
+- If applying a voice profile returns `400 Bad Request` from GPT-SoVITS, check whether Windows paths are being sent to the WSL API. The bridge converts local Windows paths such as `C:\...` into WSL paths such as `/mnt/c/...` before calling GPT-SoVITS.
+- If the bridge starts but no speech is generated, check both sides: `.\status-sovits-control-background.ps1` should show the bridge PID and port `9880` listening.
+- Keep reference audio and prompt text matched. A wrong prompt for the reference WAV can cause clipped, repeated, or unstable speech.
+
 ## Run
 
 If `GPT-SoVITS/` is in the recommended layout:
@@ -119,8 +140,30 @@ Invoke-RestMethod `
 CLI helper:
 
 ```powershell
-.\sovits-send.ps1 "Mirror this agent response as speech."
+.\sovits-send.ps1 "Read this text aloud."
 ```
+
+## Agent Voice Mirroring
+
+Agent voice mirroring means the caller sends the same text that is visible to the user. The bridge does not create a separate TTS-only answer and it does not watch the clipboard.
+
+Use `/api/agent/speak` when you want to make that intent explicit:
+
+```powershell
+Invoke-RestMethod `
+  -Method Post `
+  -Uri http://127.0.0.1:18088/api/agent/speak `
+  -ContentType 'application/json; charset=utf-8' `
+  -Body (@{ text = 'This is the exact visible agent message.'; play = $true } | ConvertTo-Json)
+```
+
+Or use the helper:
+
+```powershell
+.\sovits-agent-send.ps1 "This is the exact visible agent message."
+```
+
+The web UI also includes an `Agent voice mirroring` test section so the endpoint can be checked without another app.
 
 ## Voice Profiles
 
