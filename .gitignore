@@ -1,0 +1,12 @@
+Open-LLM-VTuber/
+GPT-SoVITS/
+FinanceAgentGUI/
+logs/
+sovits-output/
+__pycache__/
+*.7z
+*.zip
+*.wav
+*.mp3
+*.pid
+finance-vtuber-bridge.state.json

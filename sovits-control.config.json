@@ -1,0 +1,15 @@
+{
+  "api_url": "http://127.0.0.1:9880/tts",
+  "ref_audio_path": "C:\\Users\\jun\\Documents\\VTuber\\Open-LLM-VTuber\\models\\GPT-SoVITS_Model_Collection\\原神\\韩语\\芙宁娜_KO\\v4\\furina_ko\\ref_audio.wav",
+  "prompt_text": "방금 이야기를 하면서 느꼈지…. 이 왕생당의 객경이란 자는… 절대 평범한 사람이 아니야",
+  "text_lang": "ko",
+  "prompt_lang": "ko",
+  "text_split_method": "cut5",
+  "batch_size": 1,
+  "timeout": 183,
+  "auto_play": true,
+  "max_chars": 35000,
+  "voice_profile_id": "c3e9d5f192d8",
+  "gpt_weight_path": "C:\\Users\\jun\\Documents\\VTuber\\Open-LLM-VTuber\\models\\GPT-SoVITS_Model_Collection\\原神\\韩语\\芙宁娜_KO\\v4\\furina_ko\\furina_ko.ckpt",
+  "sovits_weight_path": "C:\\Users\\jun\\Documents\\VTuber\\Open-LLM-VTuber\\models\\GPT-SoVITS_Model_Collection\\原神\\韩语\\芙宁娜_KO\\v4\\furina_ko\\furina_ko.pth"
+}
