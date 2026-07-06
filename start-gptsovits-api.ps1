@@ -10,6 +10,11 @@ $stderr = Join-Path $logs "api-v2-9880.err.log"
 $pidFile = Join-Path $root "gptsovits-api.pid"
 $launcher = Join-Path $root "scripts\start-gptsovits-api-wsl.sh"
 $runtimePython = Join-Path $gptSoVitsRoot "runtime\python.exe"
+$launcherMode = ($env:GPTSOVITS_LAUNCHER -as [string])
+if (-not $launcherMode) {
+    $launcherMode = "auto"
+}
+$launcherMode = $launcherMode.ToLowerInvariant()
 
 New-Item -ItemType Directory -Force -Path $logs | Out-Null
 
@@ -19,7 +24,24 @@ if ($existing) {
     return
 }
 
-if ((Test-Path $launcher) -and (Get-Command wsl.exe -ErrorAction SilentlyContinue)) {
+if (($launcherMode -eq "windows") -and -not (Test-Path $runtimePython)) {
+    throw "GPTSOVITS_LAUNCHER=windows was requested, but runtime Python was not found: $runtimePython"
+}
+
+if (($launcherMode -eq "wsl") -and (-not (Test-Path $launcher) -or -not (Get-Command wsl.exe -ErrorAction SilentlyContinue))) {
+    throw "GPTSOVITS_LAUNCHER=wsl was requested, but WSL launcher was not available: $launcher"
+}
+
+if ((($launcherMode -eq "windows") -or (($launcherMode -eq "auto") -and (Test-Path $runtimePython)))) {
+    $process = Start-Process `
+        -FilePath $runtimePython `
+        -ArgumentList @("-X", "utf8", "api_v2.py", "-a", "127.0.0.1", "-p", "9880", "-c", "GPT_SoVITS/configs/tts_infer.yaml") `
+        -WorkingDirectory $gptSoVitsRoot `
+        -WindowStyle Hidden `
+        -RedirectStandardOutput $stdout `
+        -RedirectStandardError $stderr `
+        -PassThru
+} elseif ((Test-Path $launcher) -and (Get-Command wsl.exe -ErrorAction SilentlyContinue)) {
     $resolvedLauncher = (Resolve-Path -LiteralPath $launcher).Path
     $launcherDrive = $resolvedLauncher.Substring(0, 1).ToLowerInvariant()
     $launcherTail = ($resolvedLauncher.Substring(2) -replace "\\", "/")
@@ -29,15 +51,6 @@ if ((Test-Path $launcher) -and (Get-Command wsl.exe -ErrorAction SilentlyContinu
         -FilePath "wsl.exe" `
         -ArgumentList @("-e", "bash", $wslLauncher) `
         -WorkingDirectory $root `
-        -WindowStyle Hidden `
-        -RedirectStandardOutput $stdout `
-        -RedirectStandardError $stderr `
-        -PassThru
-} elseif (Test-Path $runtimePython) {
-    $process = Start-Process `
-        -FilePath $runtimePython `
-        -ArgumentList @("-X", "utf8", "api_v2.py", "-a", "127.0.0.1", "-p", "9880", "-c", "GPT_SoVITS/configs/tts_infer.yaml") `
-        -WorkingDirectory $gptSoVitsRoot `
         -WindowStyle Hidden `
         -RedirectStandardOutput $stdout `
         -RedirectStandardError $stderr `

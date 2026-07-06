@@ -12,6 +12,7 @@
   "normalize_english_tokens": true,
   "max_chars": 3500,
   "max_saved_wavs": 50,
+  "gptsovits_path_style": "auto",
   "voice_profile_id": "",
   "gpt_weight_path": "",
   "sovits_weight_path": "",

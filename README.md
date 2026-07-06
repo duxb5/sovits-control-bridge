@@ -79,13 +79,16 @@ Copy-Item .\sovits-control.config.example.json .\sovits-control.config.json
 
 PyAudio is required for bridge playback. If installation fails on Windows, install a wheel that matches your Python version or use a Python distribution with PortAudio support.
 
-## Windows + WSL GPT-SoVITS Notes
+## Windows / WSL GPT-SoVITS Notes
 
-On a Windows host with a recent NVIDIA GPU, it can be easier to run the bridge on Windows and run GPT-SoVITS inside WSL. This repository includes `scripts/start-gptsovits-api-wsl.sh` for that layout. The PowerShell launcher calls WSL, activates a conda environment named `GPTSoVits`, and starts `api_v2.py` on `127.0.0.1:9880`.
+On Windows, GPT-SoVITS can run either through the bundled Windows runtime (`GPT-SoVITS/runtime/python.exe`) or inside WSL. The default PowerShell launcher uses the Windows runtime when it is present. To force WSL, set `GPTSOVITS_LAUNCHER=wsl` before running `start-gptsovits-api.ps1`.
+
+This repository also includes `scripts/start-gptsovits-api-wsl.sh` for the WSL layout. That script activates a conda environment named `GPTSoVits` and starts `api_v2.py` on `127.0.0.1:9880`.
 
 The setup that was verified while preparing this bridge used:
 
 - Windows Python 3.12 for the bridge and PyAudio playback
+- Windows GPT-SoVITS runtime when available, or WSL as an explicit fallback
 - WSL with Miniforge under `~/miniforge3`
 - conda environment `GPTSoVits` with Python 3.10
 - GPT-SoVITS installed under `sovits-control-bridge/GPT-SoVITS`
@@ -95,7 +98,7 @@ Troubleshooting tips from that install:
 
 - If GPT-SoVITS fails with `libcudart.so.13`, the installed PyTorch wheel expects CUDA 13 runtime libraries. Reinstall PyTorch/Torchaudio for the CUDA runtime available in WSL; CUDA 12.8 wheels fixed that issue on this machine.
 - If GPT-SoVITS imports fail, check optional packages such as `onnxruntime` and a compatible `markupsafe` version.
-- If applying a voice profile returns `400 Bad Request` from GPT-SoVITS, check whether Windows paths are being sent to the WSL API. The bridge converts local Windows paths such as `C:\...` into WSL paths such as `/mnt/c/...` before calling GPT-SoVITS.
+- If applying a voice profile returns `400 Bad Request` from GPT-SoVITS, check `GPT-SoVITS path style` in the web UI. Use `Windows paths` when GPT-SoVITS is running through the Windows runtime, and `WSL /mnt paths` when GPT-SoVITS is running inside WSL. `Auto detect` tries to choose from the local listener process.
 - If the bridge starts but no speech is generated, check both sides: `.\status-sovits-control-background.ps1` should show the bridge PID and port `9880` listening.
 - Keep reference audio and prompt text matched. A wrong prompt for the reference WAV can cause clipped, repeated, or unstable speech.
 

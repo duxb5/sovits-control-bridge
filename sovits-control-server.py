@@ -63,6 +63,7 @@ DEFAULT_CONFIG = {
     "max_chars": 3500,
     "max_saved_wavs": 50,
     "model_collection_root": str(DEFAULT_MODEL_COLLECTION_ROOT),
+    "gptsovits_path_style": "auto",
     "voice_profile_id": "",
     "gpt_weight_path": "",
     "sovits_weight_path": "",
@@ -103,10 +104,68 @@ def resolve_local_path(value):
     return path if path.is_absolute() else ROOT / path
 
 
-def path_for_gptsovits_api(path):
+def parse_api_host_port(api_url):
+    parsed = parse.urlparse(api_url)
+    host = parsed.hostname or "127.0.0.1"
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    return host, port
+
+
+def is_local_host(host):
+    return host in ["127.0.0.1", "localhost", "::1"]
+
+
+def detect_local_gptsovits_path_style(api_url):
+    if os.name != "nt":
+        return "posix"
+
+    host, port = parse_api_host_port(api_url)
+    if not is_local_host(host):
+        return "windows"
+
+    try:
+        command = (
+            "$c = Get-NetTCPConnection -LocalPort "
+            f"{int(port)} -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1; "
+            "if ($c) { "
+            "$p = Get-CimInstance Win32_Process -Filter \"ProcessId=$($c.OwningProcess)\"; "
+            "Write-Output $p.CommandLine "
+            "}"
+        )
+        result = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-Command", command],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        command_line = (result.stdout or "").lower()
+    except Exception:
+        command_line = ""
+
+    if "wsl.exe" in command_line or "wslhost" in command_line or "\\wsl" in command_line:
+        return "wsl"
+    if "python" in command_line or "api_v2.py" in command_line:
+        return "windows"
+    return "windows"
+
+
+def gptsovits_path_style(config):
+    style = str(config.get("gptsovits_path_style") or "auto").strip().lower()
+    if style in ["windows", "wsl", "posix"]:
+        return style
+    return detect_local_gptsovits_path_style(config.get("api_url") or DEFAULT_CONFIG["api_url"])
+
+
+def path_for_gptsovits_api(path, config=None):
+    style = gptsovits_path_style(config or load_config())
     resolved = str(Path(path).resolve())
+    if style == "windows":
+        return resolved
     if os.name != "nt":
         return resolved
+    if style == "posix":
+        return resolved.replace("\\", "/")
 
     drive, tail = os.path.splitdrive(resolved)
     if not drive:
@@ -397,6 +456,14 @@ HTML = r"""<!doctype html>
       <label for="model_collection_root">Model collection root</label>
       <input id="model_collection_root" />
 
+      <label for="gptsovits_path_style">GPT-SoVITS path style</label>
+      <select id="gptsovits_path_style">
+        <option value="auto">Auto detect</option>
+        <option value="windows">Windows paths</option>
+        <option value="wsl">WSL /mnt paths</option>
+        <option value="posix">POSIX paths</option>
+      </select>
+
       <label for="ref_audio_path">Reference audio path</label>
       <input id="ref_audio_path" />
 
@@ -495,7 +562,7 @@ Content-Type: application/json
   </main>
 
   <script>
-    const fields = ["api_url","model_collection_root","ref_audio_path","prompt_text","text_lang","prompt_lang","text_split_method","batch_size","timeout","auto_play","normalize_english_tokens","max_chars","max_saved_wavs","mirroring_mode","mirroring_scope"];
+    const fields = ["api_url","model_collection_root","gptsovits_path_style","ref_audio_path","prompt_text","text_lang","prompt_lang","text_split_method","batch_size","timeout","auto_play","normalize_english_tokens","max_chars","max_saved_wavs","mirroring_mode","mirroring_scope"];
     let voiceProfiles = [];
 
     function log(msg) {
@@ -602,7 +669,7 @@ Content-Type: application/json
         const data = await api("/api/status");
         document.getElementById("dot").className = "dot " + (data.gptsovits.running ? "ok" : "bad");
         document.getElementById("statusText").textContent = data.gptsovits.running
-          ? `GPT-SoVITS API 실행 중 (${data.gptsovits.url})`
+          ? `GPT-SoVITS API 실행 중 (${data.gptsovits.url}, ${data.gptsovits.path_style})`
           : "GPT-SoVITS API 꺼짐";
         if (data.last && data.last.audio_url) {
           document.getElementById("audio").src = data.last.audio_url;
@@ -695,6 +762,8 @@ def save_config(config):
         merged["max_chars"] = max(100, int(merged.get("max_chars") or 3500))
         merged["max_saved_wavs"] = max(1, int(merged.get("max_saved_wavs") or 50))
         merged["normalize_english_tokens"] = bool(merged.get("normalize_english_tokens", True))
+        if str(merged.get("gptsovits_path_style") or "auto").lower() not in ["auto", "windows", "wsl", "posix"]:
+            merged["gptsovits_path_style"] = "auto"
         with CONFIG_PATH.open("w", encoding="utf-8") as f:
             json.dump(merged, f, ensure_ascii=False, indent=2)
             f.write("\n")
@@ -764,9 +833,9 @@ def apply_voice_profile(profile_id):
 
     config = load_config()
     api_url = config["api_url"]
-    call_gptsovits_api(api_url, "set_gpt_weights", {"weights_path": path_for_gptsovits_api(profile["gpt_weight_path"])})
-    call_gptsovits_api(api_url, "set_sovits_weights", {"weights_path": path_for_gptsovits_api(profile["sovits_weight_path"])})
-    call_gptsovits_api(api_url, "set_refer_audio", {"refer_audio_path": path_for_gptsovits_api(profile["ref_audio_path"])})
+    call_gptsovits_api(api_url, "set_gpt_weights", {"weights_path": path_for_gptsovits_api(profile["gpt_weight_path"], config)})
+    call_gptsovits_api(api_url, "set_sovits_weights", {"weights_path": path_for_gptsovits_api(profile["sovits_weight_path"], config)})
+    call_gptsovits_api(api_url, "set_refer_audio", {"refer_audio_path": path_for_gptsovits_api(profile["ref_audio_path"], config)})
 
     config.update(
         {
@@ -813,7 +882,7 @@ def synthesize(text, config):
     params = {
         "text": spoken_text,
         "text_lang": config["text_lang"],
-        "ref_audio_path": path_for_gptsovits_api(ref_audio_path),
+        "ref_audio_path": path_for_gptsovits_api(ref_audio_path, config),
         "prompt_lang": config["prompt_lang"],
         "prompt_text": config["prompt_text"],
         "text_split_method": config["text_split_method"],
@@ -944,7 +1013,11 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(
                 {
                     "ok": True,
-                    "gptsovits": {"running": is_port_open(), "url": config["api_url"]},
+                    "gptsovits": {
+                        "running": is_port_open(),
+                        "url": config["api_url"],
+                        "path_style": gptsovits_path_style(config),
+                    },
                     "last": LAST_RESULT,
                     "playback": PLAYBACK_STATE,
                     "output": output_stats(),
